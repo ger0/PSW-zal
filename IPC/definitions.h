@@ -1,6 +1,9 @@
 #define AMNT 14
 #define SIZE 15
 
+int checkSem(int semid) {
+    return semctl(semid, 0, GETVAL, 0);
+}
 
 void podnies(int semid, int semnum, int val) {
     struct sembuf buf;

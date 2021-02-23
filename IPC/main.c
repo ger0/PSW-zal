@@ -81,35 +81,34 @@ void *func(void *p_id) {
 	exit(1);
     }
     while (isRunning) {
-	// ZABIERANIE WIDELCOW
-	takeForks(ID, sem_forks);
 	// gotowanie
-	if ((rand_r(seed) % 10) < 5) {
+	if ((rand_r(seed) % 10) < 5 && checkSem(sem_avail) > 0) {
+	    opusc(sem_avail, 0, 1);
+
 	    elem.mtype 	= rand_r(seed) % 8 + 1;
 	    memcpy(elem.mvalue, dania[rand_r(seed) % AMNT], SIZE);
 
-	    //opusc(sem_avail, 0, 1);
-
-	    fprintf(stdout, "(+) PRZYGOTOWANE: %-15s o wadze: %d \n", 
-		    elem.mvalue, elem.mtype);
-
+	    takeForks(ID, sem_forks);
+	    
 	    if (msgsnd(msgid, &elem, sizeof(elem.mvalue), 0) == -1) {
 		perror("Przygotowanie dania");
 		exit(1);
 	    }
+	    fprintf(stdout, "(+) PRZYGOTOWANE: %-15s o wadze: %d \n", 
+		    elem.mvalue, elem.mtype);
+	    podnies(sem_taken, 0, 1);
 	}
 	// konsumpcja +++ tylko jezeli jest przynajmniej jeden element w kolejce
-	else {
+	else if (checkSem(sem_taken) > 0) {
+	    takeForks(ID, sem_forks);
 	    if (msgrcv(msgid, &elem, sizeof(elem.mvalue), 0, 0) == -1) {
 		perror("Spozywanie dania");
 		exit(1);
 	    } else {
 		fprintf(stdout, "(-) SKONSUMOWANE: %-15s o wadze: %d \n", 
 			elem.mvalue, elem.mtype);
-		//podnies(sem_avail, 0, 1);
-
-		//int dostep = semctl(sem_avail, 0, GETVAL, 0);
-		//printf("dost miejsce: %i\n", dostep);
+		podnies(sem_avail, 0, 1);
+		opusc(sem_taken, 0, 1);
 	    }
 	}
 	// ZWALNIANIE WIDELCOW
