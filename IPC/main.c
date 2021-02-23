@@ -3,6 +3,7 @@
 #include <pthread.h>
 #include <string.h>
 #include <unistd.h>
+#include <stdbool.h>
 
 #include <sys/types.h>
 #include <sys/ipc.h>
@@ -11,69 +12,38 @@
 
 #include "definitions.h"
 
-#define COOKS	5	// liczba kucharzy
-#define K	10	// max pojemnosc
-#define W	40	// max obciazenie
-
-// KLUCZE 
-#define FORKS		100
-#define AVAIL_SPACE	200
-#define TAKEN_SPACE	300
-
-unsigned state[COOKS];
-unsigned tID[COOKS];
-
-void initSemaphore(int amnt, int key, int val) {
-    int semid = semget(key, amnt, IPC_CREAT|0600);
-    if (semid == -1) {
-	semid = semget(key, COOKS, 0600);
-	if (semid == -1) {
-	    perror("Tworzenie tablicy semaforow");
-	    exit(1);
-	}
-    }
-    for (unsigned i = 0; i < amnt; i++) {
-	if (semctl(semid, i, SETVAL, val) == -1) {
-	    perror("Nadanie wartosci semaforowi");
-	    exit(1);
-	}
-    }
-}
-
-void takeForks(unsigned *ID, int semid) {
-    if (*ID != (unsigned)COOKS - 1) {
-	opusc(semid, *ID, 1);
-	opusc(semid, *ID + 1, 1);
+int min(int a, int b) {
+    if (a > b) {
+	return b;
     } else {
-	opusc(semid, 0, 1);
-	opusc(semid, *ID, 1);
+	return a;
     }
 }
-void freeForks(unsigned *ID, int semid) {
-    if (*ID != (unsigned)COOKS - 1) {
-	podnies(semid, *ID + 1, 1);
-	podnies(semid, *ID, 1);
-    } else {
-	podnies(semid, *ID, 1);
-	podnies(semid, 0, 1);
-    }
-}
+
+static unsigned state[COOKS];
+static unsigned tID[COOKS];
+
+static bool isRunning = true;
 
 void *func(void *p_id) {
     // identyfikator kucharza
     unsigned 	*ID = p_id;
     unsigned	*seed = &state[*ID];
     struct	msgBuf elem;
-    int		isRunning = 1;
+    int 	msgid;
 
-    int 	sem_forks;
-    int 	sem_avail;
-    int 	sem_taken;
-    int		msgid;
+    int 	sem_forks, sem_avail, sem_taken;
+    int		avail_weight, taken_weight;
+    int		mutex;
 
+    mutex	= semget(MUTEX, 1, 0600);
     sem_forks	= semget(FORKS, COOKS, 0600);
+
     sem_avail	= semget(AVAIL_SPACE, 1, 0600);
     sem_taken	= semget(TAKEN_SPACE, 1, 0600);
+
+    avail_weight = semget(AVAIL_WEIGHT, 1, 0600);
+    taken_weight = semget(TAKEN_WEIGHT, 1, 0600);
 
     msgid = msgget(145227, 0600);
     if (msgid == -1) {
@@ -81,39 +51,58 @@ void *func(void *p_id) {
 	exit(1);
     }
     while (isRunning) {
-	// gotowanie
-	if ((rand_r(seed) % 10) < 5 && checkSem(sem_avail) > 0) {
-	    opusc(sem_avail, 0, 1);
-
-	    elem.mtype 	= rand_r(seed) % 8 + 1;
+	// gotowanie przy odp pojemnosci i obciazeniu stolu
+	/*
+	if (checkSem(sem_avail) > 0 && checkSem(avail_weight) > 0 && 
+	      ((checkSem(sem_taken) < 1) && (checkSem(taken_weight) < 1))) {
+	      */
+	if (checkSem(avail_weight) > 0 && checkSem(taken_weight) < W - 1) {
+	    // przygotowywanie potrawy
+	    elem.mtype 	= rand_r(seed) % 5 + 1;
 	    memcpy(elem.mvalue, dania[rand_r(seed) % AMNT], SIZE);
 
-	    takeForks(ID, sem_forks);
+	    //opusc(sem_avail, 0, 1);
+	    opusc(avail_weight, 0, (int)(elem.mtype));
+	    //takeForks(ID, sem_forks);
 	    
+	    opusc(mutex, 0, 1);
+	    printf("DO KOLEJKI\n"); 
 	    if (msgsnd(msgid, &elem, sizeof(elem.mvalue), 0) == -1) {
+		fprintf(stderr, "wrongP: %-15s o wadze: %d \n", 
+			elem.mvalue, elem.mtype);
 		perror("Przygotowanie dania");
 		exit(1);
 	    }
-	    fprintf(stdout, "(+) PRZYGOTOWANE: %-15s o wadze: %d \n", 
+	    printf("AvailW: %i, TakenW: %i\n", checkSem(avail_weight), checkSem(taken_weight));
+	    printf("Avail: %i, Taken: %i\n", checkSem(sem_avail), checkSem(sem_taken));
+	    printf("(+) PRZYGOTOWANE: %-15s o wadze: %d \n", 
 		    elem.mvalue, elem.mtype);
-	    podnies(sem_taken, 0, 1);
+	    podnies(mutex, 0, 1);
+
+	    //podnies(sem_taken, 0, 1);
+	    podnies(taken_weight, 0, (int)(elem.mtype));
 	}
-	// konsumpcja +++ tylko jezeli jest przynajmniej jeden element w kolejce
-	else if (checkSem(sem_taken) > 0) {
-	    takeForks(ID, sem_forks);
+	// konsumpcja
+	else if (checkSem(taken_weight) > 0){
+	    //opusc(sem_taken, 0, 1);
+	    //takeForks(ID, sem_forks);
+	    opusc(mutex, 0, 1);
+	    // konsumowanie potrawy
 	    if (msgrcv(msgid, &elem, sizeof(elem.mvalue), 0, 0) == -1) {
 		perror("Spozywanie dania");
 		exit(1);
-	    } else {
-		fprintf(stdout, "(-) SKONSUMOWANE: %-15s o wadze: %d \n", 
-			elem.mvalue, elem.mtype);
-		podnies(sem_avail, 0, 1);
-		opusc(sem_taken, 0, 1);
 	    }
+	    printf("(-) SKONSUMOWANE: %-15s o wadze: %d \n", 
+		    elem.mvalue, elem.mtype);
+	    podnies(mutex, 0, 1);
+	    opusc(taken_weight, 0, (int)(elem.mtype));
+
+	    //podnies(sem_avail, 0, 1);
+	    podnies(avail_weight, 0, (int)(elem.mtype));
 	}
 	// ZWALNIANIE WIDELCOW
-	freeForks(ID, sem_forks);
-	sleep(1);
+	//freeForks(ID, sem_forks);
+	//sleep(1);
     }
     return NULL;
 }
@@ -121,15 +110,24 @@ void *func(void *p_id) {
 int main() {
     srand(time(NULL));
     pthread_t p[COOKS];
-    int semid;		// widelce
-    int semempt;	// 
 
-    // inicjalizacja widelcow
+    // zajestosc stolu
+    int sem_avail;
+    int	sem_taken; 		
+    // obciazenie stolu
+    int avail_weight;
+    int taken_weight;
+
+    // inicjalizacja semaforow
     initSemaphore(COOKS, FORKS, 1); 
 
-    // ile dan jest juz na stole
-    initSemaphore(1, AVAIL_SPACE, (int)K);  
-    initSemaphore(1, TAKEN_SPACE, 0);  
+    sem_avail = initSemaphore(1, AVAIL_SPACE, (int)K);  
+    sem_taken = initSemaphore(1, TAKEN_SPACE, 0);  
+
+    avail_weight = initSemaphore(1, AVAIL_WEIGHT, (int)W);  
+    taken_weight = initSemaphore(1, TAKEN_WEIGHT, 0);  
+
+    initSemaphore(1, MUTEX, 1);
 
     // tworzenie kolejki komunikatow
     int msgid = msgget(145227, IPC_CREAT|0600);
