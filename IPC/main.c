@@ -15,20 +15,22 @@
 
 static unsigned state[COOKS];
 static unsigned tID[COOKS];
-
 static bool isRunning = true;
+
+// widelce
+static int sem_forks;
+// zajestosc stolu
+static int sem_avail;
+static int sem_taken; 		
+// obciazenie stolu
+static int avail_weight;
+static int taken_weight;
+// kolejka komunikatow
+static int occup;
 
 void funcKill() {
     isRunning = false;
     perror("WYMUSZONO ZAKONCZENIE PROCESU");
-    int occup = msgget(QUEUE, IPC_CREAT|IPC_EXCL|0600);
-    if (occup == -1) {
-	occup = msgget(QUEUE, IPC_CREAT|0600);
-	if (occup == -1) {
-	    perror("Przylaczenie kolejki");
-	    exit(1);
-	}
-    }
     if (msgctl(occup, IPC_RMID, 0) == -1) {
 	perror("Kasacja kolejki");
 	exit(1);
@@ -41,21 +43,6 @@ void *func(void *p_id) {
     unsigned 	*ID = p_id;
     unsigned	*seed = &state[*ID];
     struct	occBuf buf;
-
-    int sem_forks	= semget(FORKS, COOKS, 0600);
-    int sem_avail	= semget(AVAIL_SPACE, 1, 0600);
-    int sem_taken	= semget(TAKEN_SPACE, 1, 0600);
-    int avail_weight	= semget(AVAIL_WEIGHT, 1, 0600);
-    int taken_weight	= semget(TAKEN_WEIGHT, 1, 0600);
-
-    int occup = msgget(QUEUE, IPC_CREAT|IPC_EXCL|0600);
-    if (occup == -1) {
-	occup = msgget(QUEUE, IPC_CREAT|0600);
-	if (occup == -1) {
-	    perror("Przylaczenie kolejki");
-	    exit(1);
-	}
-    }
     while (isRunning) {
 	// gotowanie przy odp pojemnosci i obciazeniu stolu
 	if (checkSem(sem_avail) > 0 && checkSem(avail_weight) > 0 
@@ -76,6 +63,7 @@ void *func(void *p_id) {
 		perror("Wyslanie pelnego komunikatu");
 		exit(1);
 	    }
+
 	    podnies(sem_taken, 0, 1);
 	    podnies(taken_weight, 0, buf.mvalue);
 	}
@@ -83,12 +71,13 @@ void *func(void *p_id) {
 	else {
 	    opusc(sem_taken, 0, 1);
 	    takeForks(ID, sem_forks);
+
 	    if (msgrcv(occup, &buf, sizeof(buf.mvalue), PELNY, 0) == -1) {
 		perror("Odebranie Pelnego komunikatu");
 		exit(1);
 	    }
-	    opusc(taken_weight, 0, buf.mvalue);
 	    printf("(-) SKONSUMOWANE danie o wadze: %d \n", buf.mvalue);
+	    opusc(taken_weight, 0, buf.mvalue);
 
 	    buf.mtype = PUSTY;
 	    if (msgsnd(occup, &buf, sizeof(buf.mvalue), 0) == -1) {
@@ -98,7 +87,6 @@ void *func(void *p_id) {
 	    podnies(sem_avail, 0, 1);
 	    podnies(avail_weight, 0, buf.mvalue);
 	}
-	// ZWALNIANIE WIDELCOW
 	freeForks(ID, sem_forks);
     }
     return NULL;
@@ -108,27 +96,20 @@ int main() {
     srand(time(NULL));
     signal(SIGINT, funcKill);
 
-    static pthread_t p[COOKS];
-    // zajestosc stolu
-    int sem_avail;
-    int	sem_taken; 		
-    // obciazenie stolu
-    int avail_weight;
-    int taken_weight;
+    pthread_t p[COOKS];
 
     // inicjalizacja semaforow
-    initSemaphore(COOKS, FORKS, 1); 
-
+    sem_forks = initSemaphore(COOKS, FORKS, 1); 
     sem_avail = initSemaphore(1, AVAIL_SPACE, (int)K);  
     sem_taken = initSemaphore(1, TAKEN_SPACE, 0);  
-
     avail_weight = initSemaphore(1, AVAIL_WEIGHT, (int)W);  
     taken_weight = initSemaphore(1, TAKEN_WEIGHT, 0);  
 
     struct occBuf elem;
     elem.mtype = PUSTY;
     elem.mvalue = 0;
-    int occup = msgget(QUEUE, IPC_CREAT|IPC_EXCL|0600);
+    // tworzenie kolejki komuniktow i wysylanie pustych elementow
+    occup = msgget(QUEUE, IPC_CREAT|IPC_EXCL|0600);
     if (occup == -1) {
 	occup = msgget(QUEUE, IPC_CREAT|0600);
 	if (occup == -1) {
