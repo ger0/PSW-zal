@@ -12,11 +12,16 @@
 
 #include "definitions.h"
 
-int min(int a, int b) {
-    if (a > b) {
-	return b;
-    } else {
-	return a;
+#define PUSTY 1
+#define PELNY 2
+
+// testowanie
+void test(int var, int bar) {
+    if (var > K) {
+	printf("POJEMNOSC! %i\n", var);
+    }
+    if (bar > W) {
+	printf("OBCIAZ! %i\n", bar);
     }
 }
 
@@ -29,14 +34,12 @@ void *func(void *p_id) {
     // identyfikator kucharza
     unsigned 	*ID = p_id;
     unsigned	*seed = &state[*ID];
-    struct	msgBuf elem;
-    int 	msgid;
+    struct	occBuf buf;
+    int 	occup;
 
     int 	sem_forks, sem_avail, sem_taken;
     int		avail_weight, taken_weight;
-    int		mutex;
 
-    mutex	= semget(MUTEX, 1, 0600);
     sem_forks	= semget(FORKS, COOKS, 0600);
 
     sem_avail	= semget(AVAIL_SPACE, 1, 0600);
@@ -45,63 +48,57 @@ void *func(void *p_id) {
     avail_weight = semget(AVAIL_WEIGHT, 1, 0600);
     taken_weight = semget(TAKEN_WEIGHT, 1, 0600);
 
-    msgid = msgget(145227, 0600);
-    if (msgid == -1) {
-	perror("Przylaczenie kolejki");
-	exit(1);
+    occup = msgget(999, IPC_CREAT|IPC_EXCL|0600);
+    if (occup == -1) {
+	occup = msgget(999, IPC_CREAT|0600);
+	if (occup == -1) {
+	    perror("Przylaczenie kolejki");
+	    exit(1);
+	}
     }
     while (isRunning) {
 	// gotowanie przy odp pojemnosci i obciazeniu stolu
-	/*
-	if (checkSem(sem_avail) > 0 && checkSem(avail_weight) > 0 && 
-	      ((checkSem(sem_taken) < 1) && (checkSem(taken_weight) < 1))) {
-	      */
-	if (checkSem(avail_weight) > 0 && checkSem(taken_weight) < W - 1) {
-	    // przygotowywanie potrawy
-	    elem.mtype 	= rand_r(seed) % 5 + 1;
-	    memcpy(elem.mvalue, dania[rand_r(seed) % AMNT], SIZE);
-
-	    //opusc(sem_avail, 0, 1);
-	    opusc(avail_weight, 0, (int)(elem.mtype));
-	    //takeForks(ID, sem_forks);
-	    
-	    opusc(mutex, 0, 1);
-	    printf("DO KOLEJKI\n"); 
-	    if (msgsnd(msgid, &elem, sizeof(elem.mvalue), 0) == -1) {
-		fprintf(stderr, "wrongP: %-15s o wadze: %d \n", 
-			elem.mvalue, elem.mtype);
-		perror("Przygotowanie dania");
+	if (checkSem(sem_avail) > 0 && checkSem(avail_weight) > 0 &&
+		(checkSem(sem_taken) < 1)) {
+	    opusc(sem_avail, 0, 1);
+	    if (msgrcv(occup, &buf, sizeof(buf.mvalue), PUSTY, 0) == -1) {
+		perror("Odebranie pustego komunikatu");
 		exit(1);
 	    }
-	    printf("AvailW: %i, TakenW: %i\n", checkSem(avail_weight), checkSem(taken_weight));
-	    printf("Avail: %i, Taken: %i\n", checkSem(sem_avail), checkSem(sem_taken));
-	    printf("(+) PRZYGOTOWANE: %-15s o wadze: %d \n", 
-		    elem.mvalue, elem.mtype);
-	    podnies(mutex, 0, 1);
+	    buf.mtype	= PELNY;
+	    buf.mvalue	= rand_r(seed) % 5 + 1;
 
-	    //podnies(sem_taken, 0, 1);
-	    podnies(taken_weight, 0, (int)(elem.mtype));
+	    opusc(avail_weight, 0, buf.mvalue);
+	    takeForks(ID, sem_forks);
+	    printf("(+) PRZYGOTOWANE o wadze: %d \n", buf.mvalue);
+	    if (msgsnd(occup, &buf, sizeof(buf.mvalue), 0) == -1) {
+		perror("Wyslanie pelnego komunikatu");
+		exit(1);
+	    }
+	    podnies(sem_taken, 0, 1);
+	    podnies(taken_weight, 0, buf.mvalue);
 	}
 	// konsumpcja
-	else if (checkSem(taken_weight) > 0){
-	    //opusc(sem_taken, 0, 1);
-	    //takeForks(ID, sem_forks);
-	    opusc(mutex, 0, 1);
-	    // konsumowanie potrawy
-	    if (msgrcv(msgid, &elem, sizeof(elem.mvalue), 0, 0) == -1) {
-		perror("Spozywanie dania");
+	else {
+	    opusc(sem_taken, 0, 1);
+	    takeForks(ID, sem_forks);
+	    if (msgrcv(occup, &buf, sizeof(buf.mvalue), PELNY, 0) == -1) {
+		perror("Odebranie Pelnego komunikatu");
 		exit(1);
 	    }
-	    printf("(-) SKONSUMOWANE: %-15s o wadze: %d \n", 
-		    elem.mvalue, elem.mtype);
-	    podnies(mutex, 0, 1);
-	    opusc(taken_weight, 0, (int)(elem.mtype));
+	    opusc(taken_weight, 0, buf.mvalue);
+	    printf("(-) SKONSUMOWANE o wadze: %d \n", buf.mvalue);
 
-	    //podnies(sem_avail, 0, 1);
-	    podnies(avail_weight, 0, (int)(elem.mtype));
+	    buf.mtype = PUSTY;
+	    if (msgsnd(occup, &buf, sizeof(buf.mvalue), 0) == -1) {
+		perror("Wyslanie pustego komunikatu");
+		exit(1);
+	    }
+	    podnies(sem_avail, 0, 1);
+	    podnies(avail_weight, 0, buf.mvalue);
 	}
 	// ZWALNIANIE WIDELCOW
-	//freeForks(ID, sem_forks);
+	freeForks(ID, sem_forks);
 	//sleep(1);
     }
     return NULL;
@@ -127,14 +124,21 @@ int main() {
     avail_weight = initSemaphore(1, AVAIL_WEIGHT, (int)W);  
     taken_weight = initSemaphore(1, TAKEN_WEIGHT, 0);  
 
-    initSemaphore(1, MUTEX, 1);
-
-    // tworzenie kolejki komunikatow
-    int msgid = msgget(145227, IPC_CREAT|0600);
-    if (msgid == -1) {
+    struct occBuf elem;
+    elem.mtype = PUSTY;
+    elem.mvalue = 0;
+    int occup = msgget(999, IPC_CREAT|0600);
+    if (occup == -1) {
 	perror("Utworzenie kolejki komunikatow");
 	exit(1);
     }
+    for (int i = 0; i < K; i++) {
+	if (msgsnd(occup, &elem, sizeof(elem.mvalue), 0) == -1) {
+	    perror("Wyslanie pustego komunikatu");
+	    exit(1);
+	}
+    }
+    //
     // tworzenie watkow - kucharzy
     for (unsigned i = 0; i < COOKS; i++) {
 	tID[i] = i;

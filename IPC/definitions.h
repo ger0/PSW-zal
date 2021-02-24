@@ -2,8 +2,8 @@
 #define SIZE 15
 
 #define COOKS	5	// liczba kucharzy
-#define K	10	// max pojemnosc
-#define W	40	// max obciazenie
+#define K	11	// max pojemnosc
+#define W	20	// max obciazenie
 
 // KLUCZE 
 #define FORKS		100
@@ -13,14 +13,8 @@
 #define AVAIL_WEIGHT	400
 #define TAKEN_WEIGHT	500
 
-#define MUTEX		600
-
 int checkSem(int semid) {
     return semctl(semid, 0, GETVAL, 0);
-}
-
-int checkMsg(int semid) {
-    return msgcrv(semid, 0, GETVAL, 0);
 }
 
 void podnies(int semid, int semnum, int val) {
@@ -87,6 +81,11 @@ void freeForks(unsigned *ID, int semid) {
 struct msgBuf {
     long 	mtype;
     char	mvalue[SIZE];
+};
+
+struct occBuf {
+    long 	mtype;
+    int		mvalue;
 };
 
 // strings
