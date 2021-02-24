@@ -15,7 +15,6 @@
 
 static unsigned state[COOKS];
 static unsigned tID[COOKS];
-static pthread_t p[COOKS];
 
 static bool isRunning = true;
 
@@ -108,6 +107,8 @@ void *func(void *p_id) {
 int main() {
     srand(time(NULL));
     signal(SIGINT, funcKill);
+
+    static pthread_t p[COOKS];
     // zajestosc stolu
     int sem_avail;
     int	sem_taken; 		
