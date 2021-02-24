@@ -4,6 +4,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <stdbool.h>
+#include <signal.h>
 
 #include <sys/types.h>
 #include <sys/ipc.h>
@@ -15,20 +16,28 @@
 #define PUSTY 1
 #define PELNY 2
 
-// testowanie
-void test(int var, int bar) {
-    if (var > K) {
-	printf("POJEMNOSC! %i\n", var);
-    }
-    if (bar > W) {
-	printf("OBCIAZ! %i\n", bar);
-    }
-}
-
 static unsigned state[COOKS];
 static unsigned tID[COOKS];
+static pthread_t p[COOKS];
 
 static bool isRunning = true;
+
+void funcKill() {
+    perror("WYMUSZONO ZAKONCZENIE PROCESU");
+    int occup = msgget(QUEUE, IPC_CREAT|IPC_EXCL|0600);
+    if (occup == -1) {
+	occup = msgget(QUEUE, IPC_CREAT|0600);
+	if (occup == -1) {
+	    perror("Przylaczenie kolejki");
+	    exit(1);
+	}
+    }
+    if (msgctl(occup, IPC_RMID, 0) == -1) {
+	perror("Kasacja kolejki");
+	exit(1);
+    }
+    pthread_kill(pthread_self(), SIGKILL);
+}
 
 void *func(void *p_id) {
     // identyfikator kucharza
@@ -48,9 +57,9 @@ void *func(void *p_id) {
     avail_weight = semget(AVAIL_WEIGHT, 1, 0600);
     taken_weight = semget(TAKEN_WEIGHT, 1, 0600);
 
-    occup = msgget(999, IPC_CREAT|IPC_EXCL|0600);
+    occup = msgget(QUEUE, IPC_CREAT|IPC_EXCL|0600);
     if (occup == -1) {
-	occup = msgget(999, IPC_CREAT|0600);
+	occup = msgget(QUEUE, IPC_CREAT|0600);
 	if (occup == -1) {
 	    perror("Przylaczenie kolejki");
 	    exit(1);
@@ -70,6 +79,7 @@ void *func(void *p_id) {
 
 	    opusc(avail_weight, 0, buf.mvalue);
 	    takeForks(ID, sem_forks);
+
 	    printf("(+) PRZYGOTOWANE o wadze: %d \n", buf.mvalue);
 	    if (msgsnd(occup, &buf, sizeof(buf.mvalue), 0) == -1) {
 		perror("Wyslanie pelnego komunikatu");
@@ -106,8 +116,7 @@ void *func(void *p_id) {
 
 int main() {
     srand(time(NULL));
-    pthread_t p[COOKS];
-
+    signal(SIGINT, funcKill);
     // zajestosc stolu
     int sem_avail;
     int	sem_taken; 		
@@ -127,18 +136,21 @@ int main() {
     struct occBuf elem;
     elem.mtype = PUSTY;
     elem.mvalue = 0;
-    int occup = msgget(999, IPC_CREAT|0600);
+    int occup = msgget(QUEUE, IPC_CREAT|IPC_EXCL|0600);
     if (occup == -1) {
-	perror("Utworzenie kolejki komunikatow");
-	exit(1);
-    }
-    for (int i = 0; i < K; i++) {
-	if (msgsnd(occup, &elem, sizeof(elem.mvalue), 0) == -1) {
-	    perror("Wyslanie pustego komunikatu");
+	occup = msgget(QUEUE, IPC_CREAT|0600);
+	if (occup == -1) {
+	    perror("Przylaczenie kolejki");
 	    exit(1);
 	}
+    } else {
+	for (int i = 0; i < K; i++) {
+	    if (msgsnd(occup, &elem, sizeof(elem.mvalue), 0) == -1) {
+		perror("Wyslanie pustego komunikatu");
+		exit(1);
+	    }
+	}
     }
-    //
     // tworzenie watkow - kucharzy
     for (unsigned i = 0; i < COOKS; i++) {
 	tID[i] = i;
@@ -149,10 +161,7 @@ int main() {
 	}
     }
     for (unsigned i = 0; i < COOKS; i++) {
-	if (pthread_join(p[i], NULL)) {
-	    perror("Laczenie watkow");
-	    exit(1);
-	}
+	if (pthread_join(p[i], NULL));
     }
     return 0;
 }

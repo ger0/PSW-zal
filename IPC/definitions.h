@@ -2,13 +2,15 @@
 #define SIZE 15
 
 #define COOKS	5	// liczba kucharzy
-#define K	11	// max pojemnosc
-#define W	20	// max obciazenie
+#define K	10	// max pojemnosc
+#define W	10	// max obciazenie
 
 // KLUCZE 
 #define FORKS		100
 #define AVAIL_SPACE	200
 #define TAKEN_SPACE	300
+
+#define QUEUE		999
 
 #define AVAIL_WEIGHT	400
 #define TAKEN_WEIGHT	500
@@ -78,11 +80,6 @@ void freeForks(unsigned *ID, int semid) {
 }
 
 // queue
-struct msgBuf {
-    long 	mtype;
-    char	mvalue[SIZE];
-};
-
 struct occBuf {
     long 	mtype;
     int		mvalue;
@@ -96,3 +93,13 @@ const char dania[AMNT][SIZE] = {
     "zurek", "barszcz", "zupa cebulowa",
     "pyry z gzikiem", "pierogi ruskie"
 };
+
+// testowanie
+void test(int var, int bar) {
+    if (var > K) {
+	printf("POJEMNOSC! %i\n", var);
+    }
+    if (bar > W) {
+	printf("OBCIAZ! %i\n", bar);
+    }
+}
