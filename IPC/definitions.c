@@ -30,7 +30,7 @@ void opusc(int semid, int semnum, int val) {
 int initSemaphore(int amnt, int key, int val) {
     int semid = semget(key, amnt, IPC_CREAT|0600);
     if (semid == -1) {
-	semid = semget(key, COOKS, 0600);
+	semid = semget(key, amnt, 0600);
 	if (semid == -1) {
 	    perror("Tworzenie tablicy semaforow");
 	    exit(1);

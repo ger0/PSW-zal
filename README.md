@@ -1,3 +1,3 @@
 Zaliczenie z PSW
 =====
-temp
+Wykorzystanie watkow i mechanizmow IPC

@@ -31,10 +31,14 @@ static int occup;
 void funcKill() {
     isRunning = false;
     perror("WYMUSZONO ZAKONCZENIE PROCESU");
-    if (msgctl(occup, IPC_RMID, 0) == -1) {
-	perror("Kasacja kolejki");
-	exit(1);
-    }
+
+    msgctl(occup, IPC_RMID, 0);
+    semctl(sem_forks, IPC_RMID, 0);
+    semctl(sem_avail, IPC_RMID, 0);
+    semctl(sem_taken, IPC_RMID, 0);
+    semctl(avail_weight, IPC_RMID, 0);
+    semctl(taken_weight, IPC_RMID, 0);
+
     pthread_kill(pthread_self(), SIGKILL);
 }
 
