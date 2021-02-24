@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <stdbool.h>
 #include <signal.h>
+#include <stdatomic.h>
 
 #include <sys/types.h>
 #include <sys/ipc.h>
@@ -12,7 +13,7 @@
 
 #include "definitions.h"
 
-static bool isRunning = true;
+static atomic_bool isRunning;
 
 // watki
 static pthread_t p_gnome[GNOME];
@@ -26,8 +27,14 @@ static int sem_santa;
 
 static int sem_bin;
 
+// konczenie pracy SIGINT
+void funcINT() {
+    isRunning = false;
+}
+
 // funkcje
 void *reind() {
+    signal(SIGINT, NULL);
     while (isRunning) {
 	opusc(sem_reind, 1);
 
@@ -40,6 +47,7 @@ void *reind() {
     }
 }
 void *gnome() {
+    signal(SIGINT, NULL);
     while (isRunning) {
 	opusc(sem_gnome, 1);
 
@@ -52,6 +60,7 @@ void *gnome() {
     }
 }
 void *santa() {
+    signal(SIGINT, NULL);
     while (isRunning) {
 	printf("Mikolaj poszedl spac\n\n");
 	opusc(sem_santa, 1);
@@ -70,6 +79,8 @@ void *santa() {
 }
 
 int main () {  
+    isRunning = true;
+    signal(SIGINT, funcINT);
     // inicjalizacja semaforow
     sem_reind = initSem(1, S_REIND, REIND);
     sem_gnome = initSem(1, S_GNOME, 3);
@@ -97,5 +108,6 @@ int main () {
     semctl(sem_reind, IPC_RMID, 0);
     semctl(sem_gnome, IPC_RMID, 0);
     semctl(sem_santa, IPC_RMID, 0);
+    semctl(sem_bin, IPC_RMID, 0);
     return 0;
 }
