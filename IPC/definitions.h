@@ -1,9 +1,9 @@
-#define AMNT 14
-#define SIZE 15
+#define PUSTY 1
+#define PELNY 2
 
 #define COOKS	5	// liczba kucharzy
 #define K	10	// max pojemnosc
-#define W	10	// max obciazenie
+#define W	20	// max obciazenie
 
 // KLUCZE 
 #define FORKS		100
@@ -83,15 +83,6 @@ void freeForks(unsigned *ID, int semid) {
 struct occBuf {
     long 	mtype;
     int		mvalue;
-};
-
-// strings
-const char dania[AMNT][SIZE] = {
-    "spaghetti", "pizza", "ravioli",
-    "nalesniki", "bulka", "rosol",
-    "bigos", "lasagne", "schabowy",
-    "zurek", "barszcz", "zupa cebulowa",
-    "pyry z gzikiem", "pierogi ruskie"
 };
 
 // testowanie

@@ -13,9 +13,6 @@
 
 #include "definitions.h"
 
-#define PUSTY 1
-#define PELNY 2
-
 static unsigned state[COOKS];
 static unsigned tID[COOKS];
 static pthread_t p[COOKS];
@@ -23,6 +20,7 @@ static pthread_t p[COOKS];
 static bool isRunning = true;
 
 void funcKill() {
+    isRunning = false;
     perror("WYMUSZONO ZAKONCZENIE PROCESU");
     int occup = msgget(QUEUE, IPC_CREAT|IPC_EXCL|0600);
     if (occup == -1) {
@@ -44,20 +42,14 @@ void *func(void *p_id) {
     unsigned 	*ID = p_id;
     unsigned	*seed = &state[*ID];
     struct	occBuf buf;
-    int 	occup;
 
-    int 	sem_forks, sem_avail, sem_taken;
-    int		avail_weight, taken_weight;
+    int sem_forks	= semget(FORKS, COOKS, 0600);
+    int sem_avail	= semget(AVAIL_SPACE, 1, 0600);
+    int sem_taken	= semget(TAKEN_SPACE, 1, 0600);
+    int avail_weight	= semget(AVAIL_WEIGHT, 1, 0600);
+    int taken_weight	= semget(TAKEN_WEIGHT, 1, 0600);
 
-    sem_forks	= semget(FORKS, COOKS, 0600);
-
-    sem_avail	= semget(AVAIL_SPACE, 1, 0600);
-    sem_taken	= semget(TAKEN_SPACE, 1, 0600);
-
-    avail_weight = semget(AVAIL_WEIGHT, 1, 0600);
-    taken_weight = semget(TAKEN_WEIGHT, 1, 0600);
-
-    occup = msgget(QUEUE, IPC_CREAT|IPC_EXCL|0600);
+    int occup = msgget(QUEUE, IPC_CREAT|IPC_EXCL|0600);
     if (occup == -1) {
 	occup = msgget(QUEUE, IPC_CREAT|0600);
 	if (occup == -1) {
@@ -67,8 +59,8 @@ void *func(void *p_id) {
     }
     while (isRunning) {
 	// gotowanie przy odp pojemnosci i obciazeniu stolu
-	if (checkSem(sem_avail) > 0 && checkSem(avail_weight) > 0 &&
-		(checkSem(sem_taken) < 1)) {
+	if (checkSem(sem_avail) > 0 && checkSem(avail_weight) > 0 
+		&& checkSem(sem_taken) < 1) {
 	    opusc(sem_avail, 0, 1);
 	    if (msgrcv(occup, &buf, sizeof(buf.mvalue), PUSTY, 0) == -1) {
 		perror("Odebranie pustego komunikatu");
@@ -80,7 +72,7 @@ void *func(void *p_id) {
 	    opusc(avail_weight, 0, buf.mvalue);
 	    takeForks(ID, sem_forks);
 
-	    printf("(+) PRZYGOTOWANE o wadze: %d \n", buf.mvalue);
+	    printf("(+) PRZYGOTOWANE danie o wadze: %d \n", buf.mvalue);
 	    if (msgsnd(occup, &buf, sizeof(buf.mvalue), 0) == -1) {
 		perror("Wyslanie pelnego komunikatu");
 		exit(1);
@@ -97,7 +89,7 @@ void *func(void *p_id) {
 		exit(1);
 	    }
 	    opusc(taken_weight, 0, buf.mvalue);
-	    printf("(-) SKONSUMOWANE o wadze: %d \n", buf.mvalue);
+	    printf("(-) SKONSUMOWANE danie o wadze: %d \n", buf.mvalue);
 
 	    buf.mtype = PUSTY;
 	    if (msgsnd(occup, &buf, sizeof(buf.mvalue), 0) == -1) {
@@ -109,7 +101,6 @@ void *func(void *p_id) {
 	}
 	// ZWALNIANIE WIDELCOW
 	freeForks(ID, sem_forks);
-	//sleep(1);
     }
     return NULL;
 }
