@@ -1,3 +1,19 @@
+#pragma once
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <pthread.h>
+#include <unistd.h>
+#include <stdbool.h>
+#include <signal.h>
+#include <stdatomic.h>
+
+#include <sys/types.h>
+#include <sys/ipc.h>
+#include <sys/msg.h>
+#include <sys/sem.h>
+
+
 // liczby jednostek
 #define REIND	9
 #define GNOME	10
@@ -8,48 +24,12 @@
 #define S_SANTA	986
 #define S_RUN	985
 
-int checkSem(int semid) {
-    return semctl(semid, 0, GETVAL, 0);
-}
+int checkSem(int semid);
+void podnies_bin(int semid, int semnum, int val);
+void opusc_bin(int semid, int semnum, int val);
 
-void podnies(int semid, int val) {
-    struct sembuf buf;
-    buf.sem_num	= 0;
-    buf.sem_op	= val;
-    buf.sem_flg	= 0;
-    if (semop(semid, &buf, 1) == -1) {
-	fprintf(stderr, "semid: %i", semid);
-	perror("Podnoszenie semafora");
-	exit(1);
-    }
-}
+void podnies(int semid, int val);
+void opusc(int semid, int val);
 
-void opusc(int semid, int val) {
-    struct sembuf buf;
-    buf.sem_num = 0;
-    buf.sem_op	= - val;
-    buf.sem_flg = 0;
-    if (semop(semid, &buf, 1) == -1) {
-	fprintf(stderr, "semid: %i", semid);
-	perror("Opuszczenie semafora");
-	exit(1);
-    }
-}
-
-int initSem(int amnt, int key, int val) {
-    int semid = semget(key, amnt, IPC_CREAT|0600);
-    if (semid == -1) {
-	semid = semget(key, amnt, 0600);
-	if (semid == -1) {
-	    perror("Tworzenie tablicy semaforow");
-	    exit(1);
-	}
-    }
-    for (unsigned i = 0; i < amnt; i++) {
-	if (semctl(semid, i, SETVAL, val) == -1) {
-	    perror("Nadanie wartosci semaforowi");
-	    exit(1);
-	}
-    }
-    return semid;
-}
+int initSem(int amnt, int key, int val);
+void initQueueArr(int* id, int* wait, int size);
