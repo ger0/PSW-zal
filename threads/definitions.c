@@ -70,9 +70,8 @@ int initSem(int amnt, int key, int val) {
     return semid;
 }
 
-void initQueueArr(int* id, int* wait, int size) {
+void initQueueArr(int* wait, int size) {
     for (int i = 0; i < size; i++) {
-	id[i]	= i;
 	wait[i] = 0;
 	//printf("i: %i, id: %i, wait%i\n", i, id[i], wait[i]);
     }

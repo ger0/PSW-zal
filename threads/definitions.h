@@ -32,4 +32,4 @@ void podnies(int semid, int val);
 void opusc(int semid, int val);
 
 int initSem(int amnt, int key, int val);
-void initQueueArr(int* id, int* wait, int size);
+void initQueueArr(int* wait, int size);
